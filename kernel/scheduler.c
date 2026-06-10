@@ -64,11 +64,15 @@ void scheduler_start(void)
     if (task_count == 0)
         return;
 
-    /* * Em vez de chamar a função diretamente, configuramos o sepc para o 
-     * início da tarefa e o sp para o topo da pilha da tarefa.
-     * O 'sret' então fará o salto, iniciando a execução da Task 1.
-     */
+    /* Configura o sstatus para garantir Modo Supervisor (bit 8) 
+       e ativa o SPIE (bit 5) para que o Timer funcione ao dar sret */
+    uint64_t sstatus;
+    asm volatile("csrr %0, sstatus" : "=r"(sstatus));
+    sstatus |= (1 << 8);  // SPP = 1
+    sstatus |= (1 << 5);  // SPIE = 1
+    asm volatile("csrw sstatus, %0" : : "r"(sstatus));
+
+    /* Configura os registradores para a Task 1 */
     asm volatile("csrw sepc, %0" : : "r"(tasks[0].pc));
-    asm volatile("mv sp, %0" : : "r"(tasks[0].regs[1])); // regs[1] guarda o SP inicial
+    asm volatile("mv sp, %0" : : "r"(tasks[0].regs[1])); 
     asm volatile("sret");
-}
