@@ -1,87 +1,87 @@
-.section .text
-.align 4
+section .text
 .global trap_entry
+.align 4
 
 trap_entry:
-    # Aloca exatamente 256 bytes na pilha para o frame de registros 
+    # Abre espaço na pilha da tarefa atual para guardar 31 registradores (31 * 8 = 248, arredondado para 256 bytes)
     addi sp, sp, -256
 
-    # Como alteramos o SP, precisamos salvar o SP original da Task.
-    # Primeiro, salvamos o x31 no seu local definitivo (índice 30 -> offset 240) 
-    sd x31, 240(sp)
+    # SALVA O CONTEXTO
+    sd ra,   0(sp)     # frame[0] -> regs[0] (ra)
+    sd sp,   8(sp)     # frame[1] -> regs[1] (sp) 
+    sd gp,   16(sp)    # frame[2] -> regs[2]
+    sd tp,   24(sp)    # frame[3] -> regs[3]
+    sd t0,   32(sp)    # frame[4] -> regs[4]
+    sd t1,   40(sp)
+    sd t2,   48(sp)
+    sd s0,   56(sp)
+    sd s1,   64(sp)
+    sd a0,   72(sp)
+    sd a1,   80(sp)
+    sd a2,   88(sp)
+    sd a3,   96(sp)
+    sd a4,   104(sp)
+    sd a5,   112(sp)
+    sd a6,   120(sp)
+    sd a7,   128(sp)
+    sd s2,   136(sp)
+    sd s3,   144(sp)
+    sd s4,   152(sp)
+    sd s5,   160(sp)
+    sd s6,   168(sp)
+    sd s7,   176(sp)
+    sd s8,   184(sp)
+    sd s9,   192(sp)
+    sd s10,  200(sp)
+    sd s11,  208(sp)
+    sd t3,   216(sp)
+    sd t4,   224(sp)
+    sd t5,   232(sp)
+    sd t6,   240(sp)   # frame[30] -> regs[30]
 
-    # Usamos o x31 temporariamente para calcular o SP original (SP atual + 256)
-    addi x31, sp, 256
-    sd x31, 8(sp)      # Salva o SP original no slot do x2 (índice 1 -> offset 8)
+    # O valor real do sp antes do trap era (sp atual + 256)
+    addi t0, sp, 256
+    sd t0, 8(sp)       # Atualiza o frame[1] com o valor correto da pilha da tarefa
 
-    # Salva os demais 29 registradores mapeando direto do índice 0 ao 30 do C 
-    sd x1, 0(sp)       # frame[0]  -> x1 (ra)
-    # x2 (sp) já foi calculado e salvo acima no 8(sp)
-    sd x3, 16(sp)      # frame[2]  -> x3
-    sd x4, 24(sp)      # frame[3]  -> x4
-    sd x5, 32(sp)      # frame[4]  -> x5
-    sd x6, 40(sp)      # frame[5]  -> x6
-    sd x7, 48(sp)      # frame[6]  -> x7
-    sd x8, 56(sp)      # frame[7]  -> x8
-    sd x9, 64(sp)      # frame[8]  -> x9
-    sd x10, 72(sp)     # frame[9]  -> x10 (a0)
-    sd x11, 80(sp)     # frame[10] -> x11
-    sd x12, 88(sp)     # frame[11] -> x12
-    sd x13, 96(sp)     # frame[12] -> x13
-    sd x14, 104(sp)    # frame[13] -> x14
-    sd x15, 112(sp)    # frame[14] -> x15
-    sd x16, 120(sp)    # frame[15] -> x16
-    sd x17, 128(sp)    # frame[16] -> x17
-    sd x18, 136(sp)    # frame[17] -> x18
-    sd x19, 144(sp)    # frame[18] -> x19
-    sd x20, 152(sp)    # frame[19] -> x20
-    sd x21, 160(sp)    # frame[20] -> x21
-    sd x22, 168(sp)    # frame[21] -> x22
-    sd x23, 176(sp)    # frame[22] -> x23
-    sd x24, 184(sp)    # frame[23] -> x24
-    sd x25, 192(sp)    # frame[24] -> x25
-    sd x26, 200(sp)    # frame[25] -> x26
-    sd x27, 208(sp)    # frame[26] -> x27
-    sd x28, 216(sp)    # frame[27] -> x28
-    sd x29, 224(sp)    # frame[28] -> x29
-    sd x30, 232(sp)    # frame[29] -> x30
-    # x31 já foi salvo no offset 240(sp) no início
-
-    # Passa o endereço atual do SP (o ponteiro do frame) para o argumento a0 
+    # Envia o topo da pilha (ponteiro do frame) como parâmetro em a0 para o C
     mv a0, sp
-    call trap_handler 
+    call trap_handler
 
-    # Restaura os registradores (que agora contêm o contexto da NOVA task) 
-    ld x1, 0(sp)
-    ld x3, 16(sp)
-    ld x4, 24(sp)
-    ld x5, 32(sp)
-    ld x6, 40(sp)
-    ld x7, 48(sp)
-    ld x8, 56(sp)
-    ld x9, 64(sp)
-    ld x10, 72(sp)
-    ld x11, 80(sp)
-    ld x12, 88(sp)
-    ld x13, 96(sp)
-    ld x14, 104(sp)
-    ld x15, 112(sp)
-    ld x16, 120(sp)
-    ld x17, 128(sp)
-    ld x18, 136(sp)
-    ld x19, 144(sp)
-    ld x20, 152(sp)
-    ld x21, 160(sp)
-    ld x22, 168(sp)
-    ld x23, 176(sp)
-    ld x24, 184(sp)
-    ld x25, 192(sp)
-    ld x26, 200(sp)
-    ld x27, 208(sp)
-    ld x28, 216(sp)
-    ld x29, 224(sp)
-    ld x30, 232(sp)
-    ld x31, 240(sp)
-    
-    ld sp, 8(sp)
+    # RESTAURA O CONTEXTO DA NOVA TAREFA ESCOLHIDA PELO SCHEDULER
+    ld ra,   0(sp)
+    # Não restaura o sp (8(sp)) agora para não perder o ponteiro do frame antes da hora
+    ld gp,   16(sp)
+    ld tp,   24(sp)
+    ld t0,   32(sp)
+    ld t1,   40(sp)
+    ld t2,   48(sp)
+    ld s0,   56(sp)
+    ld s1,   64(sp)
+    ld a0,   72(sp)
+    ld a1,   80(sp)
+    ld a2,   88(sp)
+    ld a3,   96(sp)
+    ld a4,   104(sp)
+    ld a5,   112(sp)
+    ld a6,   120(sp)
+    ld a7,   128(sp)
+    ld s2,   136(sp)
+    ld s3,   144(sp)
+    ld s4,   152(sp)
+    ld s5,   160(sp)
+    ld s6,   168(sp)
+    ld s7,   176(sp)
+    ld s8,   184(sp)
+    ld s9,   192(sp)
+    ld s10,  200(sp)
+    ld s11,  208(sp)
+    ld t3,   216(sp)
+    ld t4,   224(sp)
+    ld t5,   232(sp)
+    ld t6,   240(sp)
+
+    # Restaura por fim a pilha (sp) da nova tarefa que o scheduler escolheu
+    ld sp,   8(sp)
+
+    # Retorna do Trap ligando o hardware novamente na nova tarefa
     sret
