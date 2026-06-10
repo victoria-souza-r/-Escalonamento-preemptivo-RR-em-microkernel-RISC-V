@@ -6,7 +6,7 @@
 
 context_switch:
 
-    # SAVE OLD CONTEXT 
+# ---------- SAVE OLD CONTEXT ----------
 
     sd ra,   0(a0)
     sd sp,   8(a0)
@@ -46,7 +46,7 @@ context_switch:
     sd t5, 232(a0)
     sd t6, 240(a0)
 
-    #  LOAD NEW CONTEXT 
+    # ---------- LOAD NEW CONTEXT ----------
 
     ld ra,   0(a1)
     ld sp,   8(a1)
