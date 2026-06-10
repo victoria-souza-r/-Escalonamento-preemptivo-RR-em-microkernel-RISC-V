@@ -23,39 +23,25 @@ void xTaskCreate(void (*task)(void),
     if (!t->stack)
         return;
 
-    /* Topo da pilha */
-    uint64_t *sp = (uint64_t *)(t->stack + stack_size);
+    /* Força o topo da pilha (sp) a estar alinhado em 16 bytes */
+    uint64_t raw_sp = (uint64_t)(t->stack + stack_size);
+    uint64_t *sp = (uint64_t *)(raw_sp & ~15ULL);
 
     /* Limpa todos os registradores */
     for (int i = 0; i < 31; i++)
         t->regs[i] = 0;
 
-    /*
-     * Layout:
-     * regs[0]  = x1 (ra)
-     * regs[1]  = x2 (sp)
-     * regs[2]  = x3
-     * ...
-     * regs[30] = x31
-     */
-
-    /* SP inicial da tarefa */
+    /* SP inicial da tarefa mapeado em x2 (regs[1]) */
     t->regs[1] = (uint64_t)sp;
 
-    /*
-     * Quando a tarefa for restaurada pela primeira vez,
-     * o retorno deverá cair na função da task.
-     */
+    /* Registrador ra (x1) recebe o endereço inicial por segurança */
     t->regs[0] = (uint64_t)task;
 
     /* Guarda informações da tarefa */
     t->entry = task;
     t->priority = priority;
 
-    /*
-     * O scheduler preemptivo usa pc/sepc para restaurar
-     * a execução da tarefa após uma interrupção.
-     */
+    /* O scheduler preemptivo usa pc para alimentar o CSR sepc */
     t->pc = (uint64_t)task;
 
     task_count++;
