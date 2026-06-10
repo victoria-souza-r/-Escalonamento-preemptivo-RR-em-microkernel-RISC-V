@@ -76,3 +76,4 @@ void scheduler_start(void)
     asm volatile("csrw sepc, %0" : : "r"(tasks[0].pc));
     asm volatile("mv sp, %0" : : "r"(tasks[0].regs[1])); 
     asm volatile("sret");
+}
