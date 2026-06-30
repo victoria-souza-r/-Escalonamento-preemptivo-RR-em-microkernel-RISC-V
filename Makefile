@@ -28,4 +28,5 @@ fs.o:$(CROSS)gcc $(CFLAGS) -c kernel/fs.c
 block.o:$(CROSS)gcc $(CFLAGS) -c drivers/block.c
 kernel.elf: $(OBJS)$(CROSS)gcc $(CFLAGS) -T linker.ld $(OBJS) -o kernel.elf
 
-clean: rm -f *.o kernel.elf
+clean:
+rm -f *.o kernel.elf
