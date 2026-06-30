@@ -37,8 +37,11 @@ void task2()
 
 // Kernel
 
+
 void kernel_main()
 {
+    uart_print("Entrou no kernel!\n");
+
     memory_init();
 
     // Configura o trap handler 
