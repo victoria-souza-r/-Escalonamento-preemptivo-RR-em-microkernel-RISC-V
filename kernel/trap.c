@@ -16,10 +16,27 @@ void trap_handler(uint64_t *frame)
         schedule_from_trap(frame); // Escalonamento preemptivo
     }
     else
-    {
-        // Se cair aqui, o erro não é de Timer.
-        uart_print("Unhandled trap! scause: 0x");
-        // Opcional: imprime scause para debug
-        while (1); 
-    }
+{
+    uart_print("\nUnhandled trap!\n");
+
+    uart_print("scause = ");
+    uart_print_uint(scause);
+    uart_print("\n");
+
+    uint64_t sepc;
+    asm volatile("csrr %0, sepc" : "=r"(sepc));
+
+    uart_print("sepc = ");
+    uart_print_uint(sepc);
+    uart_print("\n");
+
+    uint64_t stval;
+    asm volatile("csrr %0, stval" : "=r"(stval));
+
+    uart_print("stval = ");
+    uart_print_uint(stval);
+    uart_print("\n");
+
+    while (1);
 }
+ } 
