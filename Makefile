@@ -8,10 +8,10 @@ CFLAGS = -march=rv64gc -mabi=lp64 \
          -fno-stack-protector \
          -Wall -Iinclude
 
-# Adicionados timer.o e trap.o à lista de objetos finais
+# Objetos do projeto
 OBJS = start.o trap_entry.o context.o \
        main.o task.o scheduler.o uart.o string.o memory.o \
-       timer.o trap.o
+       timer.o trap.o fs.o block.o
 
 all:
 	$(CROSS)gcc $(CFLAGS) -c boot/start.S
@@ -24,10 +24,15 @@ all:
 	$(CROSS)gcc $(CFLAGS) -c kernel/uart.c
 	$(CROSS)gcc $(CFLAGS) -c kernel/string.c
 	$(CROSS)gcc $(CFLAGS) -c kernel/memory.c
-	
-	# Novas regras para compilar o Timer e o Trap Handler
 	$(CROSS)gcc $(CFLAGS) -c kernel/timer.c
 	$(CROSS)gcc $(CFLAGS) -c kernel/trap.c
 
+	# Novos módulos
+	$(CROSS)gcc $(CFLAGS) -c kernel/fs.c
+	$(CROSS)gcc $(CFLAGS) -c drivers/block.c
+
+	# Linkedição
 	$(CROSS)gcc $(CFLAGS) -T linker.ld $(OBJS) -o kernel.elf
-	#modificado
+
+clean:
+	rm -f *.o kernel.elf
