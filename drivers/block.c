@@ -1,5 +1,6 @@
 #include "block.h"
 #include "string.h"
+#include <stddef.h>
 
 // Disco virtual 
 static uint8_t disk[NUM_BLOCKS][BLOCK_SIZE];
