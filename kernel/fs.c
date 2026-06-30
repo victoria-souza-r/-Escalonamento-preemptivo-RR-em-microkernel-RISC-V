@@ -1,6 +1,7 @@
 #include "fs.h"
 #include "block.h"
 #include "string.h"
+#include <stddef.h>
 
 // Define que os dados começam após o Superbloco(0), FAT(1) e Diretório(2)
 #define DATA_START_BLOCK 3
