@@ -1,6 +1,7 @@
 #include "scheduler.h"
 #include "task.h"
 #include <stdint.h>
+#include "uart.h"
 
 /* Variável global controlando a tarefa atualmente em execução */
 static int current = 0;
