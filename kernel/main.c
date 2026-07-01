@@ -3,108 +3,141 @@
 #include "memory.h"
 #include "timer.h"
 #include "fs.h"
-#include "string.h"
+#include "block.h"
 
 extern void uart_print(const char *);
 extern void uart_print_uint(uint64_t);
 extern void trap_entry(void);
 
-// Declaração do array fat que está em fs.c
-extern uint16_t fat[NUM_CLUSTERS];
-
-// Função de debug para imprimir o estado da FAT e validar o encadeamento
-void print_fat_debug()
+// Mostra o conteúdo de um bloco
+void mostrar_bloco(uint32_t bloco)
 {
-    uart_print("\n--- Estado da FAT (Encadeamento de Clusters) ---\n");
-    for (int i = 0; i < NUM_CLUSTERS; i++)
-    {
-        if (fat[i] != FAT_FREE)
-        {
-            uart_print("Cluster ");
-            uart_print_uint(i);
-            uart_print(" -> ");
-            if (fat[i] == FAT_EOF)
-                uart_print("EOF");
-            else
-                uart_print_uint(fat[i]);
-            uart_print("\n");
-        }
-    }
-    uart_print("------------------------------------------------\n\n");
+    char buffer[BLOCK_SIZE + 1];
+
+    block_read(bloco, buffer);
+
+    buffer[BLOCK_SIZE] = '\0';
+
+    uart_print("\nBloco ");
+    uart_print_uint(bloco);
+    uart_print(":\n");
+
+    uart_print(buffer);
+    uart_print("\n");
 }
 
-// Tasks de exemplo
-void task1() { while (1) { /* ... */ } }
-void task2() { while (1) { /* ... */ } }
-
-void kernel_main()
+// Task de teste do SimpleFAT
+void fs_task()
 {
-    uart_print("Entrou no kernel!\n");
-    memory_init();
+    char buffer[64];
+    int fd;
 
-    // Configura o trap handler
-    asm volatile("csrw stvec, %0" : : "r"(trap_entry));
+    uart_print("\n=== Inicializando SimpleFAT ===\n");
 
-    // Inicializa o timer
-    timer_init(100000);
-
-    uart_print("\n=== Preemptive Kernel com SimpleFAT ===\n");
-
-    // 1. Inicialização
-    fs_init();
-
-    // 2. Criação
-    uart_print("Criando 'notas.txt'...\n");
-    if (fs_create("notas.txt") == 0)
-    {
-        // 3. Abertura
-        int fd = fs_open("notas.txt");
-        if (fd >= 0)
-        {
-            char msg[] = "Bem-vindo ao SimpleFAT";
-            
-            // 4. Escrita
-            uart_print("Escrevendo: ");
-            uart_print(msg);
-            uart_print("\n");
-            fs_write(fd, msg, sizeof(msg));
-
-            // Debug: Ver encadeamento de clusters
-            print_fat_debug();
-
-            // 5. Leitura
-            char buffer[64];
-            memset(buffer, 0, sizeof(buffer));
-            fs_read(fd, buffer, sizeof(msg));
-
-            uart_print("Conteudo lido do disco: ");
-            uart_print(buffer);
-            uart_print("\n");
-
-            // 6. Fechamento
-            fs_close(fd);
-            uart_print("Arquivo fechado.\n");
-        }
-
-        // 7. Remoção
-        uart_print("Removendo 'notas.txt'...\n");
-        if (fs_delete("notas.txt") == 0)
-        {
-            uart_print("Arquivo removido com sucesso.\n");
-            print_fat_debug(); // Deve mostrar a FAT vazia/limpa
-        }
-    }
+    if (fs_init() == 0)
+        uart_print("Sistema de arquivos inicializado.\n");
     else
     {
-        uart_print("Erro ao criar arquivo.\n");
+        uart_print("Erro ao inicializar o sistema de arquivos.\n");
+        while (1);
     }
 
-    uart_print("Teste do sistema de arquivos concluido.\n\n");
+    /* Cenário 1 */
+    uart_print("\n[CENARIO 1] Criando notas.txt...\n");
 
-    // Inicia tarefas
-    xTaskCreate(task1, 2048, 1);
-    xTaskCreate(task2, 2048, 1);
+    if (fs_create("notas.txt") == 0)
+        uart_print("Arquivo criado com sucesso.\n");
+    else
+        uart_print("Erro ao criar arquivo.\n");
+
+    /* Cenário 2 */
+    uart_print("\n[CENARIO 2] Abrindo e escrevendo...\n");
+
+    fd = fs_open("notas.txt");
+
+    if (fd < 0)
+    {
+        uart_print("Erro ao abrir arquivo.\n");
+        while (1);
+    }
+
+    fs_write(fd,
+             "Bem-vindo ao SimpleFAT",
+             22);
+
+    uart_print("Dados escritos.\n");
+
+    uart_print("\n=== Disco Virtual ===\n");
+
+    for (int i = 0; i < 5; i++)
+    {
+        mostrar_bloco(i);
+    }
+
+    /* Cenário 3 */
+    uart_print("\n[CENARIO 3] Lendo arquivo...\n");
+
+    fs_read(fd, buffer, 22);
+    buffer[22] = '\0';
+
+    uart_print("Conteudo: ");
+    uart_print(buffer);
+    uart_print("\n");
+
+    fs_close(fd);
+
+    /* Cenário 4 */
+    uart_print("\n[CENARIO 4] Removendo arquivo...\n");
+
+    if (fs_delete("notas.txt") == 0)
+        uart_print("Arquivo removido com sucesso.\n");
+    else
+        uart_print("Erro ao remover arquivo.\n");
+
+    /* Cenário 5 */
+    uart_print("\n[CENARIO 5] Reutilizacao de espaco...\n");
+
+    if (fs_create("novo.txt") == 0)
+        uart_print("Espaco reutilizado com sucesso.\n");
+    else
+        uart_print("Falha na reutilizacao de espaco.\n");
+
+    /* Cenário extra */
+    uart_print("\n[CENARIO EXTRA] Criando varios arquivos...\n");
+
+    fs_create("a.txt");
+    fs_create("b.txt");
+    fs_create("c.txt");
+
+    uart_print("Arquivos a.txt, b.txt e c.txt criados.\n");
+
+    uart_print("\n=== TESTES FINALIZADOS ===\n");
+
+    while (1)
+        ;
+}
+
+// Kernel
+void kernel_main()
+{
+    memory_init();
+
+    /* Configura o vetor de interrupções */
+    asm volatile("csrw stvec, %0"
+                 :
+                 : "r"(trap_entry));
+
+    /* Inicializa o timer */
+    timer_init(100000);
+
+    uart_print("\n=== Preemptive Kernel + SimpleFAT ===\n");
+
+    /* Cria a task de teste */
+    xTaskCreate(fs_task, 2048, 1);
+
+    /* Inicia o escalonador */
     scheduler_start();
 
-    while (1);
+    while (1)
+        ;
 }
