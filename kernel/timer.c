@@ -1,7 +1,7 @@
 #include "timer.h"
 #include <stdint.h>
 
-static uint64_t tick_interval = 100000;
+static uint64_t tick_interval = 100000; //ticks de contador de tempo do processador
 
 /* Implementa chamada SBI set_timer */
 static inline void sbi_set_timer(uint64_t time) {
@@ -13,10 +13,10 @@ void timer_next(void) {
     uint64_t now;
     
     /* Le o CSR time */
-    asm volatile("csrr %0, time" : "=r" (now));
+    asm volatile("csrr %0, time" : "=r" (now)); //valor atual do reg time
     
     /* Programa now + tick_interval */
-    sbi_set_timer(now + tick_interval);
+    sbi_set_timer(now + tick_interval); //programa a interrupcao pra quando atingir o tick_interval
 }
 void timer_init(uint64_t interval) {
     if (interval != 0) {
@@ -25,8 +25,8 @@ void timer_init(uint64_t interval) {
     timer_next();
     
     /* Habilita STIE no CSR sie (bit 5) */
-    asm volatile("csrs sie, %0" : : "r" (1 << 5));
+    asm volatile("csrs sie, %0" : : "r" (1 << 5)); //interrupcao no modo supervisor
     
     /* Habilita SIE global em sstatus (bit 1) */
-    asm volatile("csrs sstatus, %0" : : "r" (1 << 1));
-} 
+    asm volatile("csrs sstatus, %0" : : "r" (1 << 1)); //interrupcao global
+} //modificado
