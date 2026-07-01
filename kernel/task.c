@@ -17,31 +17,31 @@ void xTaskCreate(void (*task)(void),
 
     TCB *t = &tasks[task_count];
 
-    /* Aloca a pilha */
+    /* Aloca a pilha da task */
     t->stack = (uint8_t *)kmalloc(stack_size);
 
     if (!t->stack)
         return;
 
-    /* Força o topo da pilha (sp) a estar alinhado em 16 bytes */
+    /* Calcula o topo da pilha e garante alinhamento de 16 bytes */
     uint64_t raw_sp = (uint64_t)(t->stack + stack_size);
     uint64_t *sp = (uint64_t *)(raw_sp & ~15ULL);
 
-    /* Limpa todos os registradores */
+    /* Inicializa contexto da tarefa */
     for (int i = 0; i < 31; i++)
         t->regs[i] = 0;
 
-    /* SP inicial da tarefa mapeado em x2 (regs[1]) */
+    /* SP inicial da tarefa (x2) */
     t->regs[1] = (uint64_t)sp;
 
-    /* Registrador ra (x1) recebe o endereço inicial por segurança */
+    /* Define ponto de entrada da execução */
     t->regs[0] = (uint64_t)task;
 
-    /* Guarda informações da tarefa */
+    /* Metadados da tarefa */
     t->entry = task;
     t->priority = priority;
 
-    /* O scheduler preemptivo usa pc para alimentar o CSR sepc */
+    /* PC inicial usado pelo scheduler (sepc) */
     t->pc = (uint64_t)task;
 
     task_count++;
