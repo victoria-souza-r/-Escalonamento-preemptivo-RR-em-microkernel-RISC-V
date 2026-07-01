@@ -1,171 +1,124 @@
 #include "fs.h"
-#include "block.h"
 #include "string.h"
 #include <stddef.h>
 
-// Define que os dados começam após o Superbloco(0), FAT(1) e Diretório(2)
-#define DATA_START_BLOCK 3
+/* Estruturas internas */
 
-// Estruturas do sistema de arquivos 
 static superblock_t superblock;
-uint16_t fat[NUM_CLUSTERS];
-static dir_entry_t directory[MAX_FILES];
+static uint16_t fat[NUM_CLUSTERS];
+static dir_entry_t root_dir[MAX_FILES];
 static file_descriptor_t open_files[MAX_OPEN_FILES];
 
-// Funções auxiliares de baixo nível (Clusters)
 
-static int cluster_read(uint16_t cluster, void *buffer)
-{
-    uint8_t *ptr = (uint8_t *)buffer;
-    uint32_t first_block = DATA_START_BLOCK + (cluster * CLUSTER_SIZE);
-
-    for (uint32_t i = 0; i < CLUSTER_SIZE; i++)
-    {
-        if (block_read(first_block + i, ptr + (i * BLOCK_SIZE)) != 0)
-            return -1;
-    }
-    return 0;
-}
-
-static int cluster_write(uint16_t cluster, const void *buffer)
-{
-    const uint8_t *ptr = (const uint8_t *)buffer;
-    uint32_t first_block = DATA_START_BLOCK + (cluster * CLUSTER_SIZE);
-
-    for (uint32_t i = 0; i < CLUSTER_SIZE; i++)
-    {
-        if (block_write(first_block + i, ptr + (i * BLOCK_SIZE)) != 0)
-            return -1;
-    }
-    return 0;
-}
-
-static int cluster_alloc(void)
-{
-    for (int i = 0; i < NUM_CLUSTERS; i++)
-    {
-        if (fat[i] == FAT_FREE)
-        {
-            fat[i] = FAT_EOF; // Temporário
-            return i;
-        }
-    }
-    return -1;
-}
-
-// Monta a cadeia na FAT
-static int cluster_chain_alloc(uint32_t count)
-{
-    if (count == 0) return FAT_EOF; // Prevenção para arquivos de tamanho 0
-
-    int first = -1;
-    int previous = -1;
-
-    for (uint32_t i = 0; i < count; i++)
-    {
-        int current = cluster_alloc();
-
-        if (current == -1) 
-        {
-            // Tratamento de memory leak: libera a cadeia parcialmente alocada
-            if (first != -1) 
-            {
-                uint16_t c = first;
-                while (c != FAT_EOF)
-                {
-                    uint16_t next = fat[c];
-                    fat[c] = FAT_FREE;
-                    c = next;
-                }
-            }
-            return -1;
-        }
-
-        if (first == -1) first = current;
-        if (previous != -1) fat[previous] = current;
-
-        previous = current;
-    }
-
-    if (previous != -1) fat[previous] = FAT_EOF;
-
-    return first;
-}
+/* Funções auxiliares */
 
 static int find_file(const char *name)
 {
     for (int i = 0; i < MAX_FILES; i++)
     {
-        if (directory[i].used && strcmp(directory[i].name, name) == 0)
+        if (root_dir[i].used &&
+            strcmp(root_dir[i].name, name) == 0)
+        {
             return i;
+        }
     }
+
     return -1;
 }
 
-static int find_free_directory(void)
+int cluster_alloc(void)
 {
-    for (int i = 0; i < MAX_FILES; i++)
+    /* cluster 0 reservado */
+
+    for (uint16_t i = 1; i < NUM_CLUSTERS; i++)
     {
-        if (!directory[i].used) return i;
+        if (fat[i] == FAT_FREE)
+        {
+            fat[i] = FAT_EOF;
+            return i;
+        }
     }
+
     return -1;
 }
 
-// API do sistema de arquivos
+void cluster_free_chain(uint16_t cluster)
+{
+    while (cluster != FAT_EOF &&
+           cluster < NUM_CLUSTERS)
+    {
+        uint16_t next = fat[cluster];
 
+        fat[cluster] = FAT_FREE;
+
+        if (next == FAT_EOF)
+            break;
+
+        cluster = next;
+    }
+}
+
+/* Sistema de arquivos       */
 int fs_init(void)
 {
-    superblock_t sb_disk;
-    if (block_read(0, &sb_disk) != 0) return -1;
+    superblock.magic = FS_MAGIC;
+    superblock.total_blocks = NUM_BLOCKS;
+    superblock.total_clusters = NUM_CLUSTERS;
+    superblock.cluster_size = CLUSTER_SIZE;
 
-    if (sb_disk.magic == FS_MAGIC)
-    {
-        superblock = sb_disk;
-        block_read(1, fat);
-        block_read(2, directory);
-    }
-    else
-    {
-        superblock.magic = FS_MAGIC;
-        superblock.total_blocks = NUM_BLOCKS;
-        superblock.total_clusters = NUM_CLUSTERS;
-        superblock.cluster_size = CLUSTER_SIZE;
-
-        for (int i = 0; i < NUM_CLUSTERS; i++) fat[i] = FAT_FREE;
-        memset(directory, 0, sizeof(directory));
-
-        block_write(0, &superblock);
-        block_write(1, fat);
-        block_write(2, directory);
-    }
+    memset(fat, 0, sizeof(fat));
+    memset(root_dir, 0, sizeof(root_dir));
     memset(open_files, 0, sizeof(open_files));
+
     return 0;
 }
 
 int fs_create(const char *name)
 {
-    if (name == NULL || strlen(name) == 0 || strlen(name) >= MAX_FILENAME) return -1;
-    if (find_file(name) != -1) return -1;
+    if (name == NULL)
+        return -1;
 
-    int dir_index = find_free_directory();
-    if (dir_index == -1) return -1;
+    if (find_file(name) >= 0)
+        return -1;
 
-    strcpy(directory[dir_index].name, name);
-    directory[dir_index].size = 0;
-    directory[dir_index].first_cluster = FAT_EOF; // Arquivo nasce sem clusters alocados
-    directory[dir_index].used = 1;
+    int entry = -1;
 
-    // Atualiza metadados via block_write
-    block_write(1, fat);
-    block_write(2, directory);
+    for (int i = 0; i < MAX_FILES; i++)
+    {
+        if (!root_dir[i].used)
+        {
+            entry = i;
+            break;
+        }
+    }
+
+    if (entry < 0)
+        return -1;
+
+    int cluster = cluster_alloc();
+
+    if (cluster < 0)
+        return -1;
+
+    root_dir[entry].used = 1;
+    root_dir[entry].size = 0;
+    root_dir[entry].first_cluster = cluster;
+
+    strncpy(root_dir[entry].name,
+            name,
+            MAX_FILENAME - 1);
+
+    root_dir[entry].name[MAX_FILENAME - 1] = '\0';
 
     return 0;
 }
 
 int fs_open(const char *name)
 {
-    int dir_index = find_file(name);
-    if (dir_index == -1) return -1;
+    int file = find_file(name);
+
+    if (file < 0)
+        return -1;
 
     for (int i = 0; i < MAX_OPEN_FILES; i++)
     {
@@ -173,162 +126,174 @@ int fs_open(const char *name)
         {
             open_files[i].used = 1;
             open_files[i].position = 0;
-            open_files[i].dir_index = dir_index;
+            open_files[i].dir_index = file;
+
             return i;
         }
     }
+
     return -1;
 }
 
 int fs_close(int fd)
 {
-    if (fd < 0 || fd >= MAX_OPEN_FILES || !open_files[fd].used) return -1;
-    
-    // Limpeza completa do descritor
+    if (fd < 0 || fd >= MAX_OPEN_FILES)
+        return -1;
+
+    if (!open_files[fd].used)
+        return -1;
+
     open_files[fd].used = 0;
-    open_files[fd].position = 0;
-    open_files[fd].dir_index = -1;
-    
     return 0;
 }
 
-int fs_write(int fd, const void *buffer, uint32_t size)
+int fs_write(int fd,
+             const void *buffer,
+             uint32_t size)
 {
-    if (fd < 0 || fd >= MAX_OPEN_FILES || !open_files[fd].used) return -1;
+    if (fd < 0 || fd >= MAX_OPEN_FILES)
+        return -1;
 
-    dir_entry_t *file = &directory[open_files[fd].dir_index];
-    const uint8_t *ptr = (const uint8_t *)buffer;
+    if (!open_files[fd].used)
+        return -1;
 
-    //  Liberar a cadeia de clusters anterior, se houver
-    uint16_t current_free = file->first_cluster;
-    while (current_free != FAT_EOF && current_free != FAT_FREE)
+    if (buffer == NULL)
+        return -1;
+
+    int dir = open_files[fd].dir_index;
+
+    uint16_t cluster =
+        root_dir[dir].first_cluster;
+
+    const uint8_t *src =
+        (const uint8_t *)buffer;
+
+    uint32_t written = 0;
+    uint8_t block_buffer[BLOCK_SIZE];
+
+    while (written < size)
     {
-        uint16_t next = fat[current_free];
-        fat[current_free] = FAT_FREE;
-        current_free = next;
-    }
+        memset(block_buffer,
+               0,
+               BLOCK_SIZE);
 
-    //  Calcular quantos clusters são necessários
-    uint32_t cluster_bytes = BLOCK_SIZE * CLUSTER_SIZE;
-    uint32_t clusters_needed = (size + cluster_bytes - 1) / cluster_bytes;
+        uint32_t bytes =
+            size - written;
 
-    //  Montar a cadeia (Aloca os novos clusters e liga na FAT)
-    int first = cluster_chain_alloc(clusters_needed);
-    if (first == -1 && size > 0) return -1;
+        if (bytes > BLOCK_SIZE)
+            bytes = BLOCK_SIZE;
 
-    // Atualiza metadados do arquivo usando cast apropriado
-    file->first_cluster = (uint16_t)first;
-    file->size = size;
+        memcpy(block_buffer,
+               src + written,
+               bytes);
 
-    // Percorrer a FAT e escrever os dados com buffer temporário estático
-    uint16_t current = file->first_cluster;
-    uint32_t offset = 0;
-
-    // Utiliza buffer estático para não estourar a stack do kernel
-    static uint8_t temp[BLOCK_SIZE * CLUSTER_SIZE];
-
-    while (current != FAT_EOF)
-    {
-        uint32_t remaining = size - offset;
-        if (remaining > cluster_bytes)
-        {
-            remaining = cluster_bytes;
-        }
-
-        memset(temp, 0, sizeof(temp));
-        memcpy(temp, ptr + offset, remaining);
-
-        // Adicionada a validação sugerida
-        if (cluster_write(current, temp) != 0)
+        if (block_write(cluster,
+                        block_buffer) < 0)
         {
             return -1;
         }
 
-        offset += remaining;
-        current = fat[current]; // Pula para o próximo na cadeia
+        written += bytes;
+
+        if (written < size)
+        {
+            if (fat[cluster] == FAT_EOF)
+            {
+                int new_cluster =
+                    cluster_alloc();
+
+                if (new_cluster < 0)
+                    return written;
+
+                fat[cluster] = new_cluster;
+                cluster = new_cluster;
+            }
+            else
+            {
+                cluster = fat[cluster];
+            }
+        }
     }
 
-    // Salva FAT e Diretório atualizados
-    block_write(1, fat);
-    block_write(2, directory);
+    root_dir[dir].size = written;
+    open_files[fd].position = written;
 
-    open_files[fd].position = size;
-    return size;
+    return written;
 }
 
-int fs_read(int fd, void *buffer, uint32_t size)
+int fs_read(int fd,
+            void *buffer,
+            uint32_t size)
 {
-    if (fd < 0 || fd >= MAX_OPEN_FILES || !open_files[fd].used) return -1;
+    if (fd < 0 || fd >= MAX_OPEN_FILES)
+        return -1;
 
-    dir_entry_t *file = &directory[open_files[fd].dir_index];
-    uint8_t *ptr = (uint8_t *)buffer;
+    if (!open_files[fd].used)
+        return -1;
 
-    if (size > file->size) size = file->size;
+    if (buffer == NULL)
+        return -1;
 
-    // Percorre a cadeia para ler os dados com buffer temporário estático
-    uint16_t current = file->first_cluster;
-    uint32_t offset = 0;
-    uint32_t bytes_read = 0;
-    uint32_t cluster_bytes = BLOCK_SIZE * CLUSTER_SIZE;
+    int dir = open_files[fd].dir_index;
 
-    // Utiliza buffer estático para não estourar a stack do kernel
-    static uint8_t temp[BLOCK_SIZE * CLUSTER_SIZE];
+    if (size > root_dir[dir].size)
+        size = root_dir[dir].size;
 
-    while (current != FAT_EOF && bytes_read < size)
+    uint16_t cluster =
+        root_dir[dir].first_cluster;
+
+    uint8_t *dst =
+        (uint8_t *)buffer;
+
+    uint8_t block_buffer[BLOCK_SIZE];
+
+    uint32_t read = 0;
+
+    while (cluster != FAT_EOF &&
+           read < size)
     {
-        // Adicionada a validação sugerida
-        if (cluster_read(current, temp) != 0)
+        if (block_read(cluster,
+                       block_buffer) < 0)
         {
             return -1;
         }
 
-        uint32_t remaining = size - bytes_read;
-        if (remaining > cluster_bytes)
-        {
-            remaining = cluster_bytes;
-        }
+        uint32_t bytes =
+            size - read;
 
-        memcpy(ptr + offset, temp, remaining);
+        if (bytes > BLOCK_SIZE)
+            bytes = BLOCK_SIZE;
 
-        offset += remaining;
-        bytes_read += remaining;
-        current = fat[current];
+        memcpy(dst + read,
+               block_buffer,
+               bytes);
+
+        read += bytes;
+
+        if (fat[cluster] == FAT_EOF)
+            break;
+
+        cluster = fat[cluster];
     }
 
-    open_files[fd].position = bytes_read;
-    return bytes_read; // Retorna a quantidade exata de bytes lidos
+    open_files[fd].position = read;
+
+    return read;
 }
 
 int fs_delete(const char *name)
 {
-    int dir_index = find_file(name);
-    if (dir_index == -1) return -1;
+    int file = find_file(name);
 
-    uint16_t current_cluster = directory[dir_index].first_cluster;
+    if (file < 0)
+        return -1;
 
-    while (current_cluster != FAT_EOF && current_cluster != FAT_FREE)
-    {
-        uint16_t next = fat[current_cluster];
-        fat[current_cluster] = FAT_FREE;
-        current_cluster = next;
-    }
+    cluster_free_chain(
+        root_dir[file].first_cluster);
 
-    memset(&directory[dir_index], 0, sizeof(dir_entry_t));
-
-    // Fecha os descritores quando o arquivo é apagado
-    for (int i = 0; i < MAX_OPEN_FILES; i++)
-    {
-        if (open_files[i].used && open_files[i].dir_index == dir_index)
-        {
-            open_files[i].used = 0;
-            open_files[i].position = 0;
-            open_files[i].dir_index = -1;
-        }
-    }
-
-    // Atualiza metadados via block_write
-    block_write(1, fat);
-    block_write(2, directory);
+    memset(&root_dir[file],
+           0,
+           sizeof(dir_entry_t));
 
     return 0;
 }
