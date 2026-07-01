@@ -7,7 +7,7 @@ void memory_init(void);
 /* Alocação simples */
 void *kmalloc(uint64_t size);
 
-/* Liberação (opcional — não reutiliza ainda) */
+/* Liberação */
 void kfree(void *ptr);
 
 /* Informações */
