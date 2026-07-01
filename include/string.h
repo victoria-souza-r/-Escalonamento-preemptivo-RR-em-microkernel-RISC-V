@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+// Implementações básicas de manipulação de memória e strings
 void *memcpy(void *dest, const void *src, uint64_t n);
 void *memset(void *s, int c, uint64_t n);
 
