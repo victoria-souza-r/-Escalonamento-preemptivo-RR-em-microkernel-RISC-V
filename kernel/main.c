@@ -50,7 +50,7 @@ void fs_task()
     else
         uart_print("Erro ao criar arquivo.\n");
 
-    /* Cenário 2 */
+        /* Cenário 2 */
     uart_print("\n[CENARIO 2] Abrindo e escrevendo...\n");
 
     fd = fs_open("notas.txt");
@@ -61,9 +61,23 @@ void fs_task()
         while (1);
     }
 
-    fs_write(fd,
+    /* Para testar a gravação em vários blocos (clusters),
+     
+      char texto[1500];
+     
+      for (int i = 0; i < sizeof(texto) - 1; i++)
+      {
+          texto[i] = 'A' + (i % 26);
+      }
+     
+      texto[1499] = '\0';
+     
+      fs_write(fd, texto, 1500); */
+     
+
+     fs_write(fd,
              "Bem-vindo ao SimpleFAT",
-             22);
+             22); 
 
     uart_print("Dados escritos.\n");
 
@@ -72,7 +86,7 @@ void fs_task()
     for (int i = 0; i < 5; i++)
     {
         mostrar_bloco(i);
-    }
+    } 
 
     /* Cenário 3 */
     uart_print("\n[CENARIO 3] Lendo arquivo...\n");
