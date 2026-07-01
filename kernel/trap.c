@@ -9,34 +9,40 @@ void trap_handler(uint64_t *frame)
     uint64_t scause;
     asm volatile("csrr %0, scause" : "=r"(scause));
 
-    // Verifica se é uma interrupção (bit 63 == 1) e se é de timer (código 5)
+    // Identifica o tipo de trap (interrupção ou exceção)
+    // Timer interrupt: bit 63 = 1 (interrupt) e código 5
     if ((scause & (1ULL << 63)) && (scause & 0xFF) == 5)
     {
-        timer_next();             // Agenda o próximo disparo
-        schedule_from_trap(frame); // Escalonamento preemptivo
+        // Atualiza o próximo evento do timer (mantém interrupções periódicas)
+        timer_next();
+
+        // Executa o escalonador preemptivo a partir da interrupção
+        schedule_from_trap(frame);
     }
     else
-{
-    uart_print("\nUnhandled trap!\n");
+    {
+        // Trap não tratada pelo kernel
+        uart_print("\nUnhandled trap!\n");
 
-    uart_print("scause = ");
-    uart_print_uint(scause);
-    uart_print("\n");
+        uart_print("scause = ");
+        uart_print_uint(scause);
+        uart_print("\n");
 
-    uint64_t sepc;
-    asm volatile("csrr %0, sepc" : "=r"(sepc));
+        uint64_t sepc;
+        asm volatile("csrr %0, sepc" : "=r"(sepc));
 
-    uart_print("sepc = ");
-    uart_print_uint(sepc);
-    uart_print("\n");
+        uart_print("sepc = ");
+        uart_print_uint(sepc);
+        uart_print("\n");
 
-    uint64_t stval;
-    asm volatile("csrr %0, stval" : "=r"(stval));
+        uint64_t stval;
+        asm volatile("csrr %0, stval" : "=r"(stval));
 
-    uart_print("stval = ");
-    uart_print_uint(stval);
-    uart_print("\n");
+        uart_print("stval = ");
+        uart_print_uint(stval);
+        uart_print("\n");
 
-    while (1);
+        // Para o sistema em caso de erro crítico
+        while (1);
+    }
 }
- } 
