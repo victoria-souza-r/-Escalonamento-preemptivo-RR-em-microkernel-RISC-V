@@ -3,7 +3,8 @@
 
 #include <stdint.h>
 
+// Interface do timer do sistema (usado para preempção)
 void timer_init(uint64_t interval);
 void timer_next(void);
 
-#endif
+#endif // finaliza a proteção do header
