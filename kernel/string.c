@@ -1,4 +1,4 @@
-#include <stdint.h> 
+#include <stdint.h>
 #include "string.h"
 
 void *memset(void *s, int c, uint64_t n)
@@ -46,6 +46,23 @@ char *strcpy(char *dest, const char *src)
     }
 
     return inicio;
+}
+
+char *strncpy(char *dest, const char *src, uint64_t n)
+{
+    uint64_t i;
+
+    for (i = 0; i < n && src[i] != '\0'; i++)
+    {
+        dest[i] = src[i];
+    }
+
+    for (; i < n; i++)
+    {
+        dest[i] = '\0';
+    }
+
+    return dest;
 }
 
 uint64_t strlen(const char *s)
